@@ -1,0 +1,307 @@
+import sys
+
+
+class Node():
+    def __init__(self, state, parent, action, manh_dist=0, cost=0):
+        self.state = state
+        self.parent = parent
+        self.action = action
+        self.manh_dist = manh_dist
+        self.cost = cost
+
+
+# Depth-First Search (DFS) Frontier
+class StackFrontier():
+    def __init__(self):
+        self.frontier = []
+
+    def add(self, node):
+        self.frontier.append(node)
+
+    def contains_state(self, state):
+        return any(node.state == state for node in self.frontier)
+
+    def empty(self):
+        return len(self.frontier) == 0
+
+    def remove(self):
+        if self.empty():
+            raise Exception("empty frontier")
+        else:
+            node = self.frontier[-1]
+            self.frontier = self.frontier[:-1]
+            return node
+
+
+# Breadth-First Search (BFS) Frontier
+class QueueFrontier(StackFrontier):
+
+    def remove(self):
+        if self.empty():
+            raise Exception("empty frontier")
+        else:
+            node = self.frontier[0]
+            self.frontier = self.frontier[1:]
+            return node
+
+
+class InformedFrontier_Astar(StackFrontier):
+    def __init__(self):
+        super().__init__()
+        # self.manhattan_matrix = Manhattan_Matrix
+
+    def remove(self):
+        if self.empty():
+            raise Exception("empty frontier")
+        else:
+            heuristic = []
+            cost_list = cost_calculator(self.frontier)
+            for i, node in enumerate(self.frontier):
+                heuristic.append(node.manh_dist + node.cost)
+            min_node = min(self.frontier, key=lambda node: heuristic)
+            self.frontier.remove(min_node)
+
+        return min_node
+
+
+def manhattan_distance_matrix_calculator(maze, contents, goal):
+    rows, cols = len(contents), len(contents[0])
+    max_manh_dist = rows + cols
+    manhattan_matrix = []
+
+    # Calculate Manhattan distances for each cell
+    for i in range(rows):
+        row = []
+        for j in range(cols):
+            # Implement Manhattan distance calculation logic here
+            if contents[i][j] == " " or contents[i][j] == "A" or contents[i][j] == "B":
+                distance = abs(goal[0] - i) + abs(goal[1] - j)
+                row.append(distance)
+                node = maze.nodes.get((i, j))
+                if node:
+                    node.manh_dist = distance
+            else:
+                row.append(max_manh_dist * 999)
+        manhattan_matrix.append(row)
+
+    return manhattan_matrix
+
+
+def cost_calculator(frontier):
+    cost_list = [0] * len(frontier)
+    for i, node in enumerate(frontier):
+        cost = 0
+        while node.parent is not None:
+            cost += 1
+            node = node.parent
+        cost_list[i] = cost
+        node.cost = cost
+        nodes[node.state] = node
+
+    return cost_list
+
+
+class Maze():
+
+    def __init__(self, filename):
+
+        # Read file and set height and width of maze
+        with open(filename) as f:
+            contents = f.read()
+
+        # Validate start and goal
+        if contents.count("A") != 1:
+            raise Exception("maze must have exactly one start point")
+        if contents.count("B") != 1:
+            raise Exception("maze must have exactly one goal")
+
+        # Determine height and width of maze
+        contents = contents.splitlines()
+        self.height = len(contents)
+        self.width = max(len(line) for line in contents)
+
+        # Keep track of walls
+        self.nodes = {}
+        self.walls = []
+        for i in range(self.height):
+            row = []
+            for j in range(self.width):
+                node = Node(state=(i, j), parent=None, action=None, manh_dist=0, cost=0)
+                self.nodes[(i, j)] = node
+                try:
+                    if contents[i][j] == "A":
+                        self.start = (i, j)
+                        row.append(False)
+                    elif contents[i][j] == "B":
+                        self.goal = (i, j)
+                        row.append(False)
+                    elif contents[i][j] == " ":
+                        row.append(False)
+                    else:
+                        row.append(True)
+                except IndexError:
+                    row.append(False)
+            self.walls.append(row)
+
+        self.solution = None
+        self.manh_dist_matrix = manhattan_distance_matrix_calculator(self, contents, self.goal)
+
+    def print(self):
+        solution = self.solution[1] if self.solution is not None else None
+        print()
+        for i, row in enumerate(self.walls):
+            for j, col in enumerate(row):
+                if col:
+                    print("|X|", end="")
+                elif (i, j) == self.start:
+                    print("|A|", end="")
+                elif (i, j) == self.goal:
+                    print("|B|", end="")
+                elif solution is not None and (i, j) in solution:
+                    print("|*|", end="")
+                else:
+                    print("| |", end="")
+            print()
+        print()
+
+    def neighbors(self, state):
+        row, col = state
+        candidates = [
+            ("up", (row - 1, col)),
+            ("down", (row + 1, col)),
+            ("left", (row, col - 1)),
+            ("right", (row, col + 1))
+        ]
+
+        result = []
+        for action, (r, c) in candidates:
+            if 0 <= r < self.height and 0 <= c < self.width and not self.walls[r][c]:
+                result.append((action, (r, c)))
+        return result
+
+    def solve(self):
+        """Finds a solution to maze, if one exists."""
+
+        # Keep track of number of states explored
+        self.num_explored = 0
+
+        # Initialize frontier to just the starting position
+        start = Node(state=self.start, parent=None, action=None)
+        frontier = InformedFrontier_Astar()
+        frontier.add(start)
+
+        # Initialize an empty explored set
+        self.explored = set()
+
+        # Keep looping until solution found
+        while True:
+
+            # If nothing left in frontier, then no path
+            if frontier.empty():
+                raise Exception("no solution")
+
+            # Choose a node from the frontier
+            node = frontier.remove()
+            self.num_explored += 1
+            self.nodes[node.state].cost = node.cost
+            # If node is the goal, then we have a solution
+            if node.state == self.goal:
+                actions = []
+                cells = []
+                while node.parent is not None:
+                    actions.append(node.action)
+                    cells.append(node.state)
+                    node = node.parent
+                actions.reverse()
+                cells.reverse()
+                self.solution = (actions, cells)
+                return
+
+            # Mark node as explored
+            self.explored.add(node.state)
+
+            # Add neighbors to frontier
+            for action, state in self.neighbors(node.state):
+                if not frontier.contains_state(state) and state not in self.explored:
+                    child = Node(state=state, parent=node, action=action)
+                    frontier.add(child)
+
+    def output_image(self, filename, show_solution=True, show_explored=False):
+        from PIL import Image, ImageDraw, ImageFont
+        cell_size = 50
+        cell_border = 2
+
+        # Create a blank canvas
+        img = Image.new(
+            "RGBA",
+            (self.width * cell_size, self.height * cell_size),
+            "black"
+        )
+        draw = ImageDraw.Draw(img)
+        font = ImageFont.load_default()
+
+        solution = self.solution[1] if self.solution is not None else None
+        for i, row in enumerate(self.walls):
+            for j, col in enumerate(row):
+
+                # Walls
+                if col:
+                    fill = (40, 40, 40)
+
+                # Start
+                elif (i, j) == self.start:
+                    fill = (255, 0, 0)
+
+                # Goal
+                elif (i, j) == self.goal:
+                    fill = (0, 171, 28)
+
+                # Solution
+                elif solution is not None and show_solution and (i, j) in solution:
+                    fill = (220, 235, 113)
+
+                # Explored
+                elif solution is not None and show_explored and (i, j) in self.explored:
+                    fill = (212, 97, 85)
+
+                # Empty cell
+                else:
+                    fill = (237, 240, 252)
+
+                # Draw cell
+                draw.rectangle(
+                    ([(j * cell_size + cell_border, i * cell_size + cell_border),
+                      ((j + 1) * cell_size - cell_border, (i + 1) * cell_size - cell_border)]),
+                    fill=fill
+                )
+
+                node = self.nodes.get((i, j))
+                text = str(node.manh_dist) + '+' + str(node.cost)
+
+                bbox = draw.textbbox((j * cell_size, i * cell_size), str(text), font=font)
+                text_width = bbox[2] - bbox[0]
+                text_height = bbox[3] - bbox[1]
+                # for node in node.state():
+                draw.text(
+                    (j * cell_size + (cell_size - text_width) // 2, i * cell_size + (cell_size - text_height) // 2),
+                    str(text),
+                    fill=(0, 0, 0),
+                    font=font
+                )
+
+        filename_image = filename + '_informed_Astar.png'
+        img.save(filename_image)
+
+
+if len(sys.argv) != 2:
+    sys.exit("Usage: python maze.py maze.txt")
+
+m = Maze(sys.argv[1])
+print("Maze:")
+m.print()
+print("Solving...")
+m.solve()
+print("States Explored:", m.num_explored)
+print("Solution:")
+m.print()
+m.output_image("mazeX", show_explored=True)
